@@ -1,4 +1,4 @@
-configs:
+conferences_processing:
   default:
     input_csv_path: /home/aacastro/Multimodal-AI-in-Finance/data/paths.csv
     qa_models:
@@ -30,3 +30,19 @@ configs:
     evals: 3
     device: cuda
     verbose: 1
+
+
+embeddings_pipeline:
+  default:
+    node_encoder:
+      hidden_dim: 128
+      meta_dim: 32
+      n_heads: 8
+      d_output: 512
+      weights_path: "/home/aacastro/Multimodal-AI-in-Finance/weights/node_encoder_best.pt"
+    conference_encoder:
+      hidden_dim: 256
+      input_dim: 512
+      n_heads: 4
+      d_output: 512
+      weights_path: "/home/aacastro/Multimodal-AI-in-Finance/weights/conference_encoder_best.pt"

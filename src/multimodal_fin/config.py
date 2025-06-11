@@ -19,6 +19,23 @@ def default_device() -> str:
         return "cuda" if torch.cuda.is_available() else "cpu"
     except ImportError:
         return "cpu"
+    
+
+class NodeEncoderParams(BaseModel):
+    meta_dim: int
+    n_heads: int
+    d_output: int
+    weights_path: str
+
+class ConferenceEncoderParams(BaseModel):
+    hidden_dim: int
+    n_heads: int
+    d_output: int
+    weights_path: str
+
+class EmbeddingsPipelineSettings(BaseModel):
+    node_encoder: NodeEncoderParams
+    conference_encoder: ConferenceEncoderParams
 
 
 class Settings(BaseModel):
@@ -49,48 +66,45 @@ class Settings(BaseModel):
     evals: int = Field(3, description="Number of evaluations per ensemble prediction.")
     device: str = Field(default_factory=default_device, description="Compute device: 'cpu' or 'cuda'.")
     verbose: int = Field(1, description="Verbosity level for pipeline output.")
+    embeddings_pipeline: Optional[EmbeddingsPipelineSettings] = None
 
 
 def load_settings(config_path: str, config_name: str = "default") -> Settings:
     """
-    Load and validate pipeline settings from a YAML file.
-    Expects a top-level 'configs' mapping with named sub-sections.
-
-    Args:
-        config_path (str): Path to the YAML configuration file.
-        config_name (str): Name of the sub-section under 'configs' to use.
-
-    Returns:
-        Settings: Validated settings object.
-
-    Raises:
-        ValueError: If 'configs' or the specified section is missing in the YAML.
+    Carga settings desde YAML con dos bloques top-level:
+      - conferences_processing
+      - embeddings_pipeline
     """
     with open(config_path, 'r', encoding='utf-8') as f:
-        raw_cfg = yaml.safe_load(f)
+        raw = yaml.safe_load(f)
 
-    configs = raw_cfg.get('configs')
-    if not isinstance(configs, dict) or config_name not in configs:
-        raise ValueError(f"Configuration section '{config_name}' not found in {config_path}.")
+    # Procesado de conferencias
+    text_confs = raw.get('conferences_processing')
+    if not isinstance(text_confs, dict) or config_name not in text_confs:
+        raise ValueError(f"Sección '{config_name}' no hallada en 'conferences_processing' de {config_path}")
+    conf = text_confs[config_name]
 
-    conf = configs[config_name]
-    # Determine embedding model names if enabled
-    emb = conf.get('embeddings', {})
-    audio = emb.get('audio', {}).get('model_name') if emb.get('audio', {}).get('enabled') else None
-    text  = emb.get('text', {}).get('model_name')  if emb.get('text', {}).get('enabled')  else None
-    video = emb.get('video', {}).get('model_name') if emb.get('video', {}).get('enabled') else None
+    # Carga bloque embeddings_pipeline solo si existe
+    emb_confs = raw.get('embeddings_pipeline')
+    emb_settings = None
+    if isinstance(emb_confs, dict) and config_name in emb_confs:
+        section = emb_confs[config_name]
+        emb_settings = EmbeddingsPipelineSettings(
+            node_encoder=NodeEncoderParams(**section['node_encoder']),
+            conference_encoder=ConferenceEncoderParams(**section['conference_encoder'])
+        )
 
-    # Instantiate and return validated settings
     return Settings(
         input_csv_path      = conf['input_csv_path'],
         qa_models           = conf['qa_models'],
         monologue_models    = conf['monologue_models'],
         sec10k_models       = conf['sec10k_models'],
         qa_analyzer_models  = conf['qa_analyzer_models'],
-        audio_model         = audio,
-        text_model          = text,
-        video_model         = video,
+        audio_model         = conf.get('audio_model'),
+        text_model          = conf.get('text_model'),
+        video_model         = conf.get('video_model'),
         evals               = conf.get('evals', 3),
         device              = conf.get('device', default_device()),
         verbose             = conf.get('verbose', 1),
+        embeddings_pipeline = emb_settings
     )
