@@ -1,3 +1,7 @@
-*.pyc
-__pycache__/
+# Archivos compilados de Python
 *.py[cod]
+__pycache__/
+*.cpython-*.pyc
+
+# Archivos y carpetas de metadatos de distribución
+*.egg-info/
