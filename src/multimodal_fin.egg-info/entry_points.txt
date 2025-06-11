@@ -1,0 +1,2 @@
+[console_scripts]
+multimodal-fin = multimodal_fin.cli:cli

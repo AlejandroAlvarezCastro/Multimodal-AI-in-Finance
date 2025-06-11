@@ -1,0 +1,32 @@
+configs:
+  default:
+    input_csv_path: data/paths.csv
+    qa_models:
+      - llama3:8b
+      - gemma2:9b
+      - phi4
+    monologue_models:
+      - llama3:8b
+      - llama3.1:8b
+      - deepseek-r1:14b
+    sec10k_models:
+      - qwen2:7b
+      - gemma2:9b
+      - qwen2.5:7b
+    qa_analyzer_models:
+      - llama3:8b
+      - gemma2:9b
+      - phi4
+    embeddings:
+      audio:
+        enabled: true
+        model_name: "iic/emotion2vec_plus_seed"
+      text:
+        enabled: true
+        model_name: "j-hartmann/emotion-english-distilroberta-base"
+      video:
+        enabled: false
+        model_name: vit  # "trpakov/vit-face-expression"
+    evals: 3
+    device: cuda
+    verbose: 1
