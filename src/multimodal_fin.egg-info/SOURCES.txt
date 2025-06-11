@@ -12,9 +12,6 @@ src/multimodal_fin.egg-info/entry_points.txt
 src/multimodal_fin.egg-info/requires.txt
 src/multimodal_fin.egg-info/top_level.txt
 src/multimodal_fin/analyzers/__init__.py
-src/multimodal_fin/analyzers/embeddings/EmbeddingsExtractor.py
-src/multimodal_fin/analyzers/embeddings/MultiModalEmbeddings.py
-src/multimodal_fin/analyzers/embeddings/__init__.py
 src/multimodal_fin/analyzers/metadata/Basics.py
 src/multimodal_fin/analyzers/metadata/CoherenceAnalyzer.py
 src/multimodal_fin/analyzers/metadata/EnsembleInterventionAnalyzer.py
@@ -23,6 +20,9 @@ src/multimodal_fin/analyzers/metadata/MetadataEnricher.py
 src/multimodal_fin/analyzers/metadata/Prompt_builder.py
 src/multimodal_fin/analyzers/metadata/QuestionAnswerAnalizer.py
 src/multimodal_fin/analyzers/metadata/__init__.py
+src/multimodal_fin/analyzers/multimodal/EmbeddingsExtractor.py
+src/multimodal_fin/analyzers/multimodal/MultiModalEmbeddings.py
+src/multimodal_fin/analyzers/multimodal/__init__.py
 src/multimodal_fin/emotions/__init__.py
 src/multimodal_fin/emotions/audio/AudioEmotionAnalzer.py
 src/multimodal_fin/emotions/audio/Basics.py
