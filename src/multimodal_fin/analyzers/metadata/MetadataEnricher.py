@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any
 
 import pandas as pd
 
@@ -13,9 +13,12 @@ class MetadataEnricher:
     """
     Añade metadata sobre temas, QA y coherencia a un DataFrame con embeddings.
 
-    - Clasificación de tema (sec10k) por intervención.
-    - Análisis QA de pares de pregunta-respuesta.
-    - Coherencia entre monólogo y respuestas.
+    Estructura resultante:
+      - monologue_interventions: dict de monólogos completos.
+      - pair_X: dict por cada par Q&A con campos:
+          question, answer, answered,
+          topic classifications, QA classification,
+          coherencia, embeddings.
     """
     sec10k_model_names: List[str]
     qa_analyzer_models: List[str]
@@ -24,38 +27,38 @@ class MetadataEnricher:
     verbose: int = 1
 
     def __post_init__(self):
-        # Clasificadores de tema 10K
+        # Clasificadores de tema (sec10k)
         self.topic_classifiers = [
             InterventionAnalyzer(model=name, NUM_EVALUATIONS=self.num_evaluations)
             for name in self.sec10k_model_names
         ]
-        # Analizadores QA
+        # Analizadores Q&A
         self.qa_analyzers = [
             QAAnalyzer(model_name=name, NUM_EVALUATIONS=self.num_evaluations)
             for name in self.qa_analyzer_models
         ]
         # Analizador de coherencia
-        first_qa = self.qa_analyzers[0].model_name if self.qa_analyzers else None
+        first_model = self.qa_analyzers[0].model_name if self.qa_analyzers else None
         self.coherence_analyzer = (
-            CoherenceAnalyzer(model_name=first_qa)
-            if first_qa else None
+            CoherenceAnalyzer(model_name=first_model)
+            if first_model else None
         )
 
-    def enrich(self, df: pd.DataFrame, original_dir: Path) -> dict:
+    def enrich(self, df: pd.DataFrame, original_dir: Path) -> Dict[str, Any]:
         """
-        Genera el dict enriquecido con metadata a partir del DataFrame de embeddings.
+        Genera el dict enriquecido con metadata.
         """
-        result: dict = {"monologue_interventions": {}}
+        result: Dict[str, Any] = {"monologue_interventions": {}}
 
-        # 1) Monólogos: texto completo + embeddings + topic classification
+        # 1) Monologues
         monologues = df[df['classification'] == 'Monologue']
         for idx, group in monologues.groupby('intervention_id'):
-            full_text = " ".join(group['text'])
+            text = " ".join(group['text'])
             embeddings = self._get_multimodal_dict(group)
-            topic_cat, topic_conf, topic_models = self._classify_topics(full_text)
+            topic_cat, topic_conf, topic_models = self._classify_topics(text)
 
             result['monologue_interventions'][str(idx)] = {
-                'text': full_text,
+                'text': text,
                 'multimodal_embeddings': embeddings,
                 'topic_classification': {
                     'Predicted_category': topic_cat,
@@ -69,109 +72,94 @@ class MetadataEnricher:
         for pair_id, group in qa_df.groupby('Pair'):
             if not isinstance(pair_id, str) or not pair_id.startswith('pair_'):
                 continue
-            q_df = group[group['classification'] == 'Question']
-            a_df = group[group['classification'] == 'Answer']
-            question_text = " ".join(q_df['text'])
-            answer_text = " ".join(a_df['text'])
 
-            # Metadata: temas para pregunta y respuesta
-            q_topic = self._classify_topics(question_text)
-            a_topic = self._classify_topics(answer_text)
-            # Análisis QA profundo
-            qa_cat, qa_conf, qa_models, qa_details = self._analyze_qa_pair(question_text, answer_text)
-            # Coherencia con cada monólogo
-            coherence_analyses = []
+            q_group = group[group['classification'] == 'Question']
+            a_group = group[group['classification'] == 'Answer']
+            question = " ".join(q_group['text'])
+            answer = " ".join(a_group['text'])
+
+            # topic
+            q_topic = self._classify_topics(question)
+            a_topic = self._classify_topics(answer)
+            # QA analysis
+            qa_cat, qa_conf, qa_models, qa_details = self._analyze_qa_pair(question, answer)
+            answered = qa_details.get('answered') if isinstance(qa_details, dict) else None
+
+            # coherence
+            coherence = []
             if self.coherence_analyzer:
                 for mono_id, mono in result['monologue_interventions'].items():
                     try:
-                        coh = self.coherence_analyzer.analyze_coherence(mono['text'], answer_text)
+                        coh = self.coherence_analyzer.analyze_coherence(mono['text'], answer)
                         coh['monologue_index'] = int(mono_id)
-                        coherence_analyses.append(coh)
-                    except:
-                        pass
+                        coherence.append(coh)
+                    except Exception:
+                        continue
 
             result[pair_id] = {
-                'Question': question_text,
-                'Answer': answer_text,
-                'question_topic_classification': self._format_topic(q_topic),
-                'answer_topic_classification': self._format_topic(a_topic),
+                'question': question,
+                'answer': answer,
+                'answered': answered,
+                'question_topic_classification': {
+                    'Predicted_category': q_topic[0],
+                    'Confidence': q_topic[1],
+                    'Model_confidences': q_topic[2]
+                },
+                'answer_topic_classification': {
+                    'Predicted_category': a_topic[0],
+                    'Confidence': a_topic[1],
+                    'Model_confidences': a_topic[2]
+                },
                 'qa_response_classification': {
                     'Predicted_category': qa_cat,
                     'Confidence': qa_conf,
                     'Model_confidences': qa_models,
-                    'Details': qa_details
+                    'details': qa_details
                 },
-                'coherence_analyses': coherence_analyses,
+                'coherence_analyses': coherence,
                 'multimodal_embeddings': {
-                    'question': self._get_multimodal_dict(q_df),
-                    'answer': self._get_multimodal_dict(a_df)
+                    'question': self._get_multimodal_dict(q_group),
+                    'answer': self._get_multimodal_dict(a_group)
                 }
             }
 
-        return result
-
-    def _classify_topics(self, text: str):
-        """Clasifica un texto en tema 10K con varios clasificadores ensemble."""
-        preds = []
-        for clf in self.topic_classifiers:
-            cat, conf = clf.get_pred(text)
-            preds.append((cat, conf, clf.model))
-        # Sumar confianzas por categoría
-        conf_sum = {}
+    def _classify_topics(self, text: str) -> Any:
+        preds = [(clf.get_pred(text)[0], clf.get_pred(text)[1], clf.model)
+                 for clf in self.topic_classifiers]
+        # sum confidences
+        conf_sum: Dict[str, float] = {}
         for cat, conf, _ in preds:
             conf_sum[cat] = conf_sum.get(cat, 0.0) + conf
-        best_cat, total = max(conf_sum.items(), key=lambda x: x[1])
-        avg_conf = round(total / len(self.topic_classifiers), 2)
-        # Model confs
-        model_conf = {m: {'Predicted_category': c, 'Confidence': round(f,2)} for c,f,m in [(c,f,m) for c,f,m in preds]}
-        return best_cat, avg_conf, model_conf
+        best, total = max(conf_sum.items(), key=lambda x: x[1])
+        avg = round(total / len(preds), 2) if preds else 0.0
+        model_conf = {model: {'Predicted_category': cat, 'Confidence': round(c, 2)}
+                      for cat, c, model in preds}
+        return best, avg, model_conf
 
-    def _analyze_qa_pair(self, question: str, answer: str):
-        """Análisis profundo de pares QA con múltiples modelos."""
+    def _analyze_qa_pair(self, question: str, answer: str) -> Any:
         results = []
-        model_conf = {}
+        model_conf: Dict[str, Dict[str, float]] = {}
         for analyzer in self.qa_analyzers:
             cat, conf, details = analyzer.get_pred(question, answer)
             if not cat:
                 continue
-            results.append((cat, conf, analyzer.model_name, details.get('raw_outputs', [])))
-            model_conf[analyzer.model_name] = {
-                'Predicted_category': cat,
-                'Confidence': round(conf,2)
-            }
+            results.append((cat, conf, analyzer.model_name, details))
+            model_conf[analyzer.model_name] = {'Predicted_category': cat, 'Confidence': round(conf, 2)}
         if not results:
             return None, 0.0, model_conf, {}
-        # Combina confianzas
-        conf_sum = {}
+        # combine
+        conf_sum: Dict[str, float] = {}
         for cat, conf, *_ in results:
-            conf_sum[cat] = conf_sum.get(cat,0) + conf
-        best_cat, total = max(conf_sum.items(), key=lambda x: x[1])
-        avg_conf = round(total/len(results),2)
-        # Mejores detalles
-        best_details = {}
-        for cat, _, _, raws in results:
-            if cat == best_cat and raws:
-                best_details = raws[0]
-                break
-        return best_cat, avg_conf, model_conf, best_details
+            conf_sum[cat] = conf_sum.get(cat, 0.0) + conf
+        best, total = max(conf_sum.items(), key=lambda x: x[1])
+        avg = round(total / len(results), 2)
+        detail = next((d for c,_,_,d in results if c == best and isinstance(d, dict)), {})
+        return best, avg, model_conf, detail
 
-    def _get_multimodal_dict(self, df_sub: pd.DataFrame) -> dict:
-        """Extrae listas de embeddings de un subset de DataFrame."""
-        audio = df_sub.get('audio_embedding').tolist() if 'audio_embedding' in df_sub else None
-        text = df_sub.get('text_embedding').tolist() if 'text_embedding' in df_sub else None
-        video = df_sub.get('video_embedding').tolist() if 'video_embedding' in df_sub else None
+    def _get_multimodal_dict(self, df_sub: pd.DataFrame) -> Dict[str, Any]:
         return {
             'num_sentences': len(df_sub),
-            'audio': audio,
-            'text': text,
-            'video': video
-        }
-
-    def _format_topic(self, topic_tuple):
-        """Formatea la tupla de tema en dict legible."""
-        cat, conf, model_conf = topic_tuple
-        return {
-            'Predicted_category': cat,
-            'Confidence': conf,
-            'Model_confidences': model_conf
+            'audio': df_sub.get('audio_embedding').tolist() if 'audio_embedding' in df_sub else None,
+            'text': df_sub.get('text_embedding').tolist() if 'text_embedding' in df_sub else None,
+            'video': df_sub.get('video_embedding').tolist() if 'video_embedding' in df_sub else None
         }

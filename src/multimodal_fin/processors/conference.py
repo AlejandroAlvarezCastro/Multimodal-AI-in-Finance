@@ -71,7 +71,7 @@ class ConferenceProcessor:
 
         # Rutas de entrada
         transcript_csv = original / "transcript.csv"
-        level3_json = original / "LEVEL_3.json"
+        level3_json = original / "LEVEL_4.json"
         if not transcript_csv.exists() or not level3_json.exists():
             raise FileNotFoundError(f"Faltan archivos en {original}")
 
