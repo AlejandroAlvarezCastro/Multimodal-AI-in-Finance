@@ -74,12 +74,6 @@ class MultimodalProcessor:
             original_dir=original_dir
         )
 
-        # Añade tiempo de procesamiento si no existe
-        enriched_result.setdefault("processing_time_seconds", 0.0)
-        enriched_result["processing_time_seconds"] = round(
-            enriched_result["processing_time_seconds"], 2
-        )
-
         # 3) Serialización a JSON
         output_path = Path(output_json_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
