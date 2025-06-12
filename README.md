@@ -44,7 +44,7 @@ También puede incluir un bloque `embeddings_pipeline` para los parámetros de l
 
 1. **Instalación**: Ejecutar desde el directorio raíz del proyecto:
    ```bash
-   cd 2025_ACA_MultichannelAI
+   cd 2025_ACA_MultichannelAI/
    pip install -e .
    ```
 
