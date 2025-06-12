@@ -49,14 +49,18 @@ class EmbedRunner:
             paths = [json_path]
         else:
             df = pd.read_csv(json_csv)
-            paths = [Path(p) for p in df.iloc[:, 0].astype(str)]
+            paths = list(df['Paths'])
 
         # Genera embeddings
         for p in paths:
             try:
                 emb = self.pipeline.generate_embedding(str(p), return_attn=True)
                 arr = emb.detach().cpu().numpy().flatten()
+                typer.echo(' ')
+                typer.echo('-' * 40)
+                typer.echo(' ')
                 typer.echo(f"📦 {p} → embedding[{len(arr)}]")
                 typer.echo(arr)
+
             except Exception as e:
                 typer.echo(f"❌ Error en {p}: {e}", err=True)
