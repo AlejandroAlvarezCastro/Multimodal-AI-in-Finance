@@ -6,9 +6,6 @@ from pathlib import Path
 import typer
 
 from multimodal_fin.config import load_settings
-# from multimodal_fin.processors.conference import ConferenceProcessor
-# from multimodal_fin.embeddings.ConferencePipeline import ConferenceEmbeddingPipeline
-
 from multimodal_fin.runners import ProcessRunner, EmbedRunner
 
 app = typer.Typer(help="Multimodal conference processing CLI.")
